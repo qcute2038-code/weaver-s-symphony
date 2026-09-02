@@ -71,7 +71,7 @@ VCODEC = GPU_CODEC if NVENC else CPU_CODEC
 SS = 2.0 if NVENC else 1.25
 
 print(f"[scene-weaver] encoder mode = {'GPU (NVENC)' if NVENC else 'CPU (libx264)'}, "
-      f"lanes={LANES}, cpus={CPU_COUNT}")
+      f"lanes={LANES}, threads/lane={THREADS}, cpus={CPU_COUNT}")
 
 # --------------------------------------------------------- cinematography ---
 
