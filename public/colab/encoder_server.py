@@ -1,18 +1,26 @@
 """
-Scene Weaver — Colab T4 GPU encoder.
+Scene Weaver — remote encoder (CPU or GPU).
 
-Runs inside a Google Colab notebook (GPU runtime). Accepts a panel list from
-the web app, downloads every panel image, renders Ken Burns motion + colour
-grading with ffmpeg, encodes with the T4's NVENC hardware encoder and serves
-the finished mp4 back over an https tunnel.
+Runs on any machine with python3 + ffmpeg: a plain CPU cloud box/VPS, a
+Colab/Kaggle notebook, or a GPU runtime. Accepts a panel list from the web app,
+downloads every panel image, renders Ken Burns motion + colour grading with
+ffmpeg, encodes with NVENC when a GPU is present and libx264 otherwise, and
+serves the finished mp4 back over an https tunnel.
+
+Run it directly on a CPU host:
+    pip install --quiet requests    # not required, stdlib only
+    python3 encoder_server.py       # listens on 0.0.0.0:$PORT (default 8000)
+then expose port 8000 with cloudflared/ngrok and paste the https URL in the app.
+
+Env knobs: SW_LANES, SW_THREADS, SW_X264_PRESET, SW_CRF, SW_TOKEN, SW_BASE, PORT.
 
 Design notes for very long videos (2h+, thousands of panels):
   * Each panel becomes its own short clip -> memory stays flat.
   * Clips are cross-faded in groups (GROUP panels per filter_complex) so the
     ffmpeg command never grows unbounded, then the groups are stream-copy
     concatenated: no generation loss, no O(n^2) re-encoding.
-  * Panels are rendered in parallel lanes; NVENC on a T4 handles several
-    1080p30 streams at once.
+  * Panels are rendered in parallel lanes; on CPU we run one lane per couple of
+    cores so all cores stay saturated without thrashing.
 """
 
 import json, math, os, re, shutil, subprocess, threading, time, uuid, hashlib
