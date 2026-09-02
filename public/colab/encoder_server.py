@@ -57,7 +57,7 @@ def has_nvenc():
         t = subprocess.run(["ffmpeg", "-hide_banner", "-y", "-f", "lavfi",
                             "-i", "color=c=black:s=256x144:d=0.1", "-c:v",
                             "h264_nvenc", "-f", "null", "-"],
-                           capture_output=True, text=True, timeout=60)
+                           capture_output=True, text=True, timeout=20)
         return t.returncode == 0
     except Exception:
         return False
