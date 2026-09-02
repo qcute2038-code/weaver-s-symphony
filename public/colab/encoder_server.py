@@ -1,18 +1,26 @@
 """
-Scene Weaver — Colab T4 GPU encoder.
+Scene Weaver — remote encoder (CPU or GPU).
 
-Runs inside a Google Colab notebook (GPU runtime). Accepts a panel list from
-the web app, downloads every panel image, renders Ken Burns motion + colour
-grading with ffmpeg, encodes with the T4's NVENC hardware encoder and serves
-the finished mp4 back over an https tunnel.
+Runs on any machine with python3 + ffmpeg: a plain CPU cloud box/VPS, a
+Colab/Kaggle notebook, or a GPU runtime. Accepts a panel list from the web app,
+downloads every panel image, renders Ken Burns motion + colour grading with
+ffmpeg, encodes with NVENC when a GPU is present and libx264 otherwise, and
+serves the finished mp4 back over an https tunnel.
+
+Run it directly on a CPU host:
+    pip install --quiet requests    # not required, stdlib only
+    python3 encoder_server.py       # listens on 0.0.0.0:$PORT (default 8000)
+then expose port 8000 with cloudflared/ngrok and paste the https URL in the app.
+
+Env knobs: SW_LANES, SW_THREADS, SW_X264_PRESET, SW_CRF, SW_TOKEN, SW_BASE, PORT.
 
 Design notes for very long videos (2h+, thousands of panels):
   * Each panel becomes its own short clip -> memory stays flat.
   * Clips are cross-faded in groups (GROUP panels per filter_complex) so the
     ffmpeg command never grows unbounded, then the groups are stream-copy
     concatenated: no generation loss, no O(n^2) re-encoding.
-  * Panels are rendered in parallel lanes; NVENC on a T4 handles several
-    1080p30 streams at once.
+  * Panels are rendered in parallel lanes; on CPU we run one lane per couple of
+    cores so all cores stay saturated without thrashing.
 """
 
 import json, math, os, re, shutil, subprocess, threading, time, uuid, hashlib
@@ -46,24 +54,24 @@ def has_nvenc():
 
 NVENC = has_nvenc()
 
-# CPU fallback must stay watchable *and* fast: Colab's shared vCPUs are slow, so
-# we use a cheaper x264 preset, cap threads sensibly and render from a smaller
-# supersample (see SS below).
+# CPU-only hosts are the common case here, so tune for them: one lane per two
+# cores keeps every core busy (x264 scales badly past ~4 threads per process),
+# a cheap x264 preset, and a smaller supersample (see SS below).
 CPU_COUNT = max(1, (os.cpu_count() or 2))
 if LANES <= 0:
-    LANES = 4 if NVENC else max(2, min(4, CPU_COUNT))
+    LANES = 4 if NVENC else max(2, min(8, math.ceil(CPU_COUNT / 2)))
+THREADS = int(os.environ.get("SW_THREADS", "0")) or max(1, min(4, CPU_COUNT // max(1, LANES)))
 
 GPU_CODEC = ["-c:v", "h264_nvenc", "-preset", "p4", "-rc", "vbr", "-cq", "23", "-b:v", "8M"]
 CPU_CODEC = ["-c:v", "libx264", "-preset", os.environ.get("SW_X264_PRESET", "veryfast"),
-             "-crf", os.environ.get("SW_CRF", "23"), "-threads",
-             str(max(1, CPU_COUNT // max(1, LANES)))]
+             "-crf", os.environ.get("SW_CRF", "23"), "-threads", str(THREADS)]
 VCODEC = GPU_CODEC if NVENC else CPU_CODEC
 
 # supersample factor before zoompan: 2x on GPU boxes, 1.25x on CPU-only runtimes
 SS = 2.0 if NVENC else 1.25
 
 print(f"[scene-weaver] encoder mode = {'GPU (NVENC)' if NVENC else 'CPU (libx264)'}, "
-      f"lanes={LANES}, cpus={CPU_COUNT}")
+      f"lanes={LANES}, threads/lane={THREADS}, cpus={CPU_COUNT}")
 
 # --------------------------------------------------------- cinematography ---
 
@@ -529,3 +537,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port=8000):
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    p = int(os.environ.get("PORT", "8000"))
+    print(f"[scene-weaver] listening on 0.0.0.0:{p}")
+    serve(p)

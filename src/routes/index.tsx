@@ -452,20 +452,20 @@ function Index() {
       const h = await colabHealth(colabUrl);
       setColabInfo(
         h.gpu
-          ? `Connected · T4 GPU (NVENC) encoder ready · ${h.lanes} lanes`
-          : `Connected · CPU encoder (libx264) ready · ${h.lanes} lanes — works fine, just slower than a T4 GPU runtime.`,
+          ? `Connected · GPU (NVENC) encoder ready · ${h.lanes} lanes`
+          : `Connected · CPU encoder (libx264) ready · ${h.lanes} parallel lanes`,
       );
 
     } catch (e) {
       setError(
-        `Could not reach that Colab encoder. Make sure the notebook is still running. (${
+        `Could not reach that encoder. Make sure encoder_server.py is still running and the tunnel is up. (${
           e instanceof Error ? e.message : String(e)
         })`,
       );
     }
   }
 
-  /** Encodes on the user's connected Colab T4 GPU — nothing runs on this device. */
+  /** Encodes on the user's connected remote encoder — nothing runs on this device. */
   async function makeVideoOnColab() {
     setError(null);
     setSavedTo(null);
@@ -481,7 +481,7 @@ function Index() {
       return;
     }
     if (!colabUrl.trim()) {
-      setError("Paste the https link printed by your Colab notebook first.");
+      setError("Paste the https link of your remote encoder first.");
       return;
     }
 
@@ -497,7 +497,7 @@ function Index() {
         setNote(n);
       });
       setDownloadUrl(res.downloadUrl);
-      setNote(`Video ready (${fmt(timeline.total)}) — download it from Colab`);
+      setNote(`Video ready (${fmt(timeline.total)}) — download it from the encoder`);
       setPhase("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -520,7 +520,7 @@ function Index() {
     }
     if (!webCodecsSupported()) {
       setError(
-        "This browser has no video encoder. Either open the page in the latest desktop Chrome/Edge, or encode on a Colab T4 GPU instead.",
+        "This browser has no video encoder. Either open the page in the latest desktop Chrome/Edge, or encode on your remote CPU/GPU server instead.",
       );
       return;
     }
@@ -673,7 +673,7 @@ function Index() {
                   onClick={makeVideoOnColab}
                   className="border-4 border-foreground bg-accent px-6 py-3 font-display text-lg font-black uppercase text-accent-foreground"
                 >
-                  Encode on Colab GPU
+                  Encode on server
                 </button>
                 <button
                   onClick={makeVideo}
@@ -726,53 +726,58 @@ function Index() {
         )}
 
         <section className="mt-8 border-4 border-foreground bg-card p-5">
-          <h2 className="font-display text-2xl font-black uppercase">Colab GPU encoder</h2>
+          <h2 className="font-display text-2xl font-black uppercase">Remote encoder (CPU or GPU)</h2>
           <p className="mt-2 text-sm text-muted-foreground">
-            Encode the final video on a free Google Colab <strong>T4 GPU</strong> instead of this
-            device — nothing is rendered locally, so multi-hour exports never hit your browser's
-            encoder or storage quota.
+            Encode the final video on any remote machine — a plain <strong>CPU</strong> cloud box or
+            a GPU runtime. Nothing is rendered locally, so multi-hour exports never hit your
+            browser's encoder or storage quota. The server auto-detects NVENC and falls back to
+            libx264, saturating every core it finds.
           </p>
           <ol className="mt-3 list-decimal space-y-1 pl-5 text-sm">
             <li>
+              On your CPU box (needs <span className="font-mono">python3</span> +{" "}
+              <span className="font-mono">ffmpeg</span>){" "}
               <button
                 type="button"
                 onClick={async () => {
                   try {
-                    const res = await fetch("/colab/scene-weaver-gpu-encoder.ipynb");
+                    const res = await fetch("/colab/encoder_server.py");
                     const blob = await res.blob();
                     const url = URL.createObjectURL(blob);
                     const a = document.createElement("a");
                     a.href = url;
-                    a.download = "scene-weaver-gpu-encoder.ipynb";
+                    a.download = "encoder_server.py";
                     document.body.appendChild(a);
                     a.click();
                     a.remove();
                     setTimeout(() => URL.revokeObjectURL(url), 2000);
                   } catch {
-                    window.open("/colab/scene-weaver-gpu-encoder.ipynb", "_blank");
+                    window.open("/colab/encoder_server.py", "_blank");
                   }
                 }}
                 className="font-semibold underline"
               >
-                Download the notebook
+                download encoder_server.py
               </button>{" "}
-
-              and open it in{" "}
-              <a
-                href="https://colab.research.google.com/"
-                target="_blank"
-                rel="noreferrer"
-                className="font-semibold underline"
-              >
-                Google Colab
-              </a>{" "}
-              (File → Upload notebook) with your own Google account.
+              and run <span className="font-mono">python3 encoder_server.py</span> (listens on port
+              8000).
             </li>
             <li>
-              Set <span className="font-mono">Runtime → Change runtime type → T4 GPU</span>, then{" "}
-              <span className="font-mono">Run all</span>.
+              Expose it over https, e.g.{" "}
+              <span className="font-mono">cloudflared tunnel --url http://localhost:8000</span>.
             </li>
-            <li>Paste the https link it prints below and hit Connect.</li>
+            <li>Paste that https link below and hit Connect.</li>
+            <li className="text-muted-foreground">
+              On a GPU notebook instead? Use the{" "}
+              <button
+                type="button"
+                onClick={() => window.open("/colab/scene-weaver-gpu-encoder.ipynb", "_blank")}
+                className="font-semibold underline"
+              >
+                notebook version
+              </button>
+              .
+            </li>
           </ol>
           <div className="mt-4 flex flex-wrap gap-2">
             <input
@@ -818,10 +823,10 @@ function Index() {
 
         {downloadUrl && (
           <section className="mt-8 border-4 border-foreground bg-card p-5">
-            <h2 className="font-display text-2xl font-black uppercase">Your video (Colab GPU)</h2>
+            <h2 className="font-display text-2xl font-black uppercase">Your video (remote encoder)</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Encoded on your Colab T4 GPU. Download it while the notebook is still running — the
-              link expires when the Colab session ends.
+              Encoded on your remote server. Download it while the server and tunnel are still
+              running — the link dies with the session.
             </p>
             <video src={downloadUrl} controls className="mt-3 w-full border-2 border-foreground" />
             <a
