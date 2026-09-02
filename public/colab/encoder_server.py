@@ -45,10 +45,20 @@ LOCK = threading.Lock()
 # ---------------------------------------------------------------- encoder ---
 
 def has_nvenc():
+    """NVENC is only 'available' if it can actually encode a frame — ffmpeg
+    builds on CPU-only cloud boxes still advertise the encoder."""
+    if os.environ.get("SW_FORCE_CPU") == "1":
+        return False
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
                              capture_output=True, text=True).stdout
-        return "h264_nvenc" in out
+        if "h264_nvenc" not in out:
+            return False
+        t = subprocess.run(["ffmpeg", "-hide_banner", "-y", "-f", "lavfi",
+                            "-i", "color=c=black:s=256x144:d=0.1", "-c:v",
+                            "h264_nvenc", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=60)
+        return t.returncode == 0
     except Exception:
         return False
 
