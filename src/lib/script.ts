@@ -197,11 +197,15 @@ export function buildTimeline(shots: PanelSource[], targetSeconds?: number): Tim
   // losing the missing tail; the nearest available image simply holds over it.
   const t0 = 0;
   const panelEnd = all.reduce((m, s) => Math.max(m, s.end), all[0]!.end);
-  const tEnd = quantise(Math.max(panelEnd, targetSeconds ?? 0));
+  // When the raw script supplied an explicit final timestamp it is absolute,
+  // not a minimum. parseScript may give trailing text a provisional duration
+  // so it can still generate its image, but that must never extend the video.
+  const tEnd = quantise(targetSeconds === undefined ? panelEnd : targetSeconds);
 
   // 1. contiguous boundaries from the timestamps themselves
   const bounds: number[] = [];
-  for (let i = 0; i < all.length; i++) bounds.push(i === 0 ? t0 : all[i]!.start);
+  for (let i = 0; i < all.length; i++)
+    bounds.push(i === 0 ? t0 : Math.min(tEnd, all[i]!.start));
   bounds.push(tEnd);
 
   // 2. resolve every panel's image: its own, else the nearest neighbour's
