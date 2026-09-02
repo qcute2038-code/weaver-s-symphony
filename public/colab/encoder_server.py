@@ -412,7 +412,11 @@ def render(jid, panels, target_seconds=0.0):
                  "-movflags", "+faststart", fixed])
         os.replace(fixed, final)
     got = probe_duration(final)
-
+    if abs(target - got) > tol:
+        # Never publish a partial export as successful.
+        raise RuntimeError(
+            f"duration audit failed: expected {target:.3f}s, encoded {got:.3f}s"
+        )
 
     shutil.rmtree(d, ignore_errors=True)
     size = os.path.getsize(final)

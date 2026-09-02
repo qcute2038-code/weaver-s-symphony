@@ -253,12 +253,13 @@ export async function buildVideo(
   const height = opts.height ?? H;
   const bitrate = opts.bitrate ?? (width >= 1920 ? 8_000_000 : 4_500_000);
 
-  const durations = shots.map((s) => Math.max(0.8, s.end - s.start));
+  const durations = shots.map((s) => Math.max(0, s.end - s.start));
   const panelSeconds = durations.reduce((a, b) => a + b, 0);
-  const totalSeconds = Math.max(panelSeconds, opts.targetSeconds ?? 0);
-  const targetFrames = Math.round((opts.targetSeconds ?? panelSeconds) * FPS);
-
-  const totalFrames = Math.max(1, Math.round(totalSeconds * FPS));
+  // A single absolute frame count is the export's source of truth. Adding
+  // independently rounded panel durations accumulates drift on long scripts.
+  const requestedSeconds = opts.targetSeconds ?? panelSeconds;
+  const targetFrames = Math.max(1, Math.round(requestedSeconds * FPS));
+  const totalFrames = targetFrames;
 
   onProgress(1, "Starting encoder…");
 
@@ -454,7 +455,13 @@ export async function buildVideo(
 
 
       const dur = durations[i]!;
-      const frames = Math.max(1, Math.round(dur * FPS));
+      // Allocate from absolute timestamp boundaries rather than summing rounded
+      // durations. The final panel is pinned to the exact requested frame.
+      const absoluteEnd =
+        i === shots.length - 1
+          ? targetFrames
+          : Math.max(0, Math.min(targetFrames, Math.round(shots[i]!.end * FPS)));
+      const frames = Math.max(0, absoluteEnd - frameIndex);
       const move = moves[i]!;
 
       // prefetch the next panel while this one renders
