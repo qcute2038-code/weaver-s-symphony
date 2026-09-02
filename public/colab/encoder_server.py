@@ -537,3 +537,9 @@ class Handler(BaseHTTPRequestHandler):
 
 def serve(port=8000):
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
+
+
+if __name__ == "__main__":
+    p = int(os.environ.get("PORT", "8000"))
+    print(f"[scene-weaver] listening on 0.0.0.0:{p}")
+    serve(p)
