@@ -45,10 +45,20 @@ LOCK = threading.Lock()
 # ---------------------------------------------------------------- encoder ---
 
 def has_nvenc():
+    """NVENC is only 'available' if it can actually encode a frame — ffmpeg
+    builds on CPU-only cloud boxes still advertise the encoder."""
+    if os.environ.get("SW_FORCE_CPU") == "1":
+        return False
     try:
         out = subprocess.run(["ffmpeg", "-hide_banner", "-encoders"],
                              capture_output=True, text=True).stdout
-        return "h264_nvenc" in out
+        if "h264_nvenc" not in out:
+            return False
+        t = subprocess.run(["ffmpeg", "-hide_banner", "-y", "-f", "lavfi",
+                            "-i", "color=c=black:s=256x144:d=0.1", "-c:v",
+                            "h264_nvenc", "-f", "null", "-"],
+                           capture_output=True, text=True, timeout=20)
+        return t.returncode == 0
     except Exception:
         return False
 
@@ -397,7 +407,7 @@ def render(jid, panels, target_seconds=0.0):
             break
         set_job(jid, pct=98, note="Matching video length to the script…")
         fixed = os.path.join(OUT, f"{jid}.fix{attempt}.mp4")
-        if drift > 0 and os.path.exists(pad_src):
+        if drift > 0 and os.path.exists(pad_src) and attempt < 2:
             tailc = os.path.join(d, f"tail{attempt}.mp4")
             run(["ffmpeg", "-y", "-loop", "1", "-i", pad_src, "-t", f"{drift:.3f}",
                  "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,"
@@ -413,8 +423,12 @@ def render(jid, panels, target_seconds=0.0):
             run(["ffmpeg", "-y", "-i", final, "-t", f"{target:.3f}",
                  "-c", "copy", "-movflags", "+faststart", fixed])
         else:
-            # frame-exact: re-encode and cut on the precise frame count
+            # frame-exact last resort: clone the last frame for as long as it
+            # takes (tpad), then cut on the precise frame count. This handles
+            # both a short and a long file, with or without a pad source.
+            hold = max(0.0, drift) + 2.0
             run(["ffmpeg", "-y", "-i", final,
+                 "-vf", f"tpad=stop_mode=clone:stop_duration={hold:.3f},fps={FPS}",
                  "-frames:v", str(max(1, int(round(target * FPS)))),
                  "-r", str(FPS), *VCODEC, "-pix_fmt", "yuv420p",
                  "-movflags", "+faststart", fixed])
