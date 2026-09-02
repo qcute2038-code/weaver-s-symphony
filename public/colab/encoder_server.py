@@ -413,8 +413,12 @@ def render(jid, panels, target_seconds=0.0):
             run(["ffmpeg", "-y", "-i", final, "-t", f"{target:.3f}",
                  "-c", "copy", "-movflags", "+faststart", fixed])
         else:
-            # frame-exact: re-encode and cut on the precise frame count
+            # frame-exact last resort: clone the last frame for as long as it
+            # takes (tpad), then cut on the precise frame count. This handles
+            # both a short and a long file, with or without a pad source.
+            hold = max(0.0, drift) + 2.0
             run(["ffmpeg", "-y", "-i", final,
+                 "-vf", f"tpad=stop_mode=clone:stop_duration={hold:.3f},fps={FPS}",
                  "-frames:v", str(max(1, int(round(target * FPS)))),
                  "-r", str(FPS), *VCODEC, "-pix_fmt", "yuv420p",
                  "-movflags", "+faststart", fixed])
