@@ -397,7 +397,7 @@ def render(jid, panels, target_seconds=0.0):
             break
         set_job(jid, pct=98, note="Matching video length to the script…")
         fixed = os.path.join(OUT, f"{jid}.fix{attempt}.mp4")
-        if drift > 0 and os.path.exists(pad_src):
+        if drift > 0 and os.path.exists(pad_src) and attempt < 2:
             tailc = os.path.join(d, f"tail{attempt}.mp4")
             run(["ffmpeg", "-y", "-loop", "1", "-i", pad_src, "-t", f"{drift:.3f}",
                  "-vf", f"scale={W}:{H}:force_original_aspect_ratio=increase,"
