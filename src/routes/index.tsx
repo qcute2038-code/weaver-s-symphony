@@ -452,20 +452,20 @@ function Index() {
       const h = await colabHealth(colabUrl);
       setColabInfo(
         h.gpu
-          ? `Connected · T4 GPU (NVENC) encoder ready · ${h.lanes} lanes`
-          : `Connected · CPU encoder (libx264) ready · ${h.lanes} lanes — works fine, just slower than a T4 GPU runtime.`,
+          ? `Connected · GPU (NVENC) encoder ready · ${h.lanes} lanes`
+          : `Connected · CPU encoder (libx264) ready · ${h.lanes} parallel lanes`,
       );
 
     } catch (e) {
       setError(
-        `Could not reach that Colab encoder. Make sure the notebook is still running. (${
+        `Could not reach that encoder. Make sure encoder_server.py is still running and the tunnel is up. (${
           e instanceof Error ? e.message : String(e)
         })`,
       );
     }
   }
 
-  /** Encodes on the user's connected Colab T4 GPU — nothing runs on this device. */
+  /** Encodes on the user's connected remote encoder — nothing runs on this device. */
   async function makeVideoOnColab() {
     setError(null);
     setSavedTo(null);
@@ -481,7 +481,7 @@ function Index() {
       return;
     }
     if (!colabUrl.trim()) {
-      setError("Paste the https link printed by your Colab notebook first.");
+      setError("Paste the https link of your remote encoder first.");
       return;
     }
 
@@ -497,7 +497,7 @@ function Index() {
         setNote(n);
       });
       setDownloadUrl(res.downloadUrl);
-      setNote(`Video ready (${fmt(timeline.total)}) — download it from Colab`);
+      setNote(`Video ready (${fmt(timeline.total)}) — download it from the encoder`);
       setPhase("done");
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -520,7 +520,7 @@ function Index() {
     }
     if (!webCodecsSupported()) {
       setError(
-        "This browser has no video encoder. Either open the page in the latest desktop Chrome/Edge, or encode on a Colab T4 GPU instead.",
+        "This browser has no video encoder. Either open the page in the latest desktop Chrome/Edge, or encode on your remote CPU/GPU server instead.",
       );
       return;
     }
@@ -673,7 +673,7 @@ function Index() {
                   onClick={makeVideoOnColab}
                   className="border-4 border-foreground bg-accent px-6 py-3 font-display text-lg font-black uppercase text-accent-foreground"
                 >
-                  Encode on Colab GPU
+                  Encode on server
                 </button>
                 <button
                   onClick={makeVideo}
@@ -823,10 +823,10 @@ function Index() {
 
         {downloadUrl && (
           <section className="mt-8 border-4 border-foreground bg-card p-5">
-            <h2 className="font-display text-2xl font-black uppercase">Your video (Colab GPU)</h2>
+            <h2 className="font-display text-2xl font-black uppercase">Your video (remote encoder)</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Encoded on your Colab T4 GPU. Download it while the notebook is still running — the
-              link expires when the Colab session ends.
+              Encoded on your remote server. Download it while the server and tunnel are still
+              running — the link dies with the session.
             </p>
             <video src={downloadUrl} controls className="mt-3 w-full border-2 border-foreground" />
             <a
